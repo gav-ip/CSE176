@@ -1,0 +1,180 @@
+% Copyright (c) 2016 by Miguel A. Carreira-Perpinan
+% for use in CSE176 Introduction to Machine Learning at UC Merced
+
+% PCA for MNIST data
+
+% ------------------------------- Load data -------------------------------
+load MNIST.mat
+
+% Subset of points to compute PCA on
+digits = [1 2 3];
+I = find(ismember(train_gnd,digits));	% only 1s; PCA plot shows curved manifold (digit slant)
+%I = randperm(N,1000);	% rnd subset of all digit classes
+
+% Instances X is of DxN, labels Y is of 1xN, K = number of classes
+X = double(train_fea(I,:)')/255; Y = double(train_gnd(I)');
+C = unique(Y); K = length(C);
+[D,~] = size(X); DD = sqrt(D);				% images of DDxDD
+
+% ---------------------------------- PCA ----------------------------------
+
+% Mean and covariance matrix
+m = mean(X,2); S = cov(X',1);
+
+% Eigenvectors and PCA using all principal components 1..D
+[U,d] = eig(S,'vector'); [d,J] = sort(d,1,'descend'); U = U(:,J); W = U;
+
+% Project training set (we obtain all projections 1..D at once)
+Z = W'*bsxfun(@minus,X,m);
+
+% Covariance in latent space using L components (these two should be equal):
+L = 2; C1 = cov(Z(1:L,:)',1), C2 = W(:,1:L)'*S*W(:,1:L)
+% Sum of variances and sum of eigenvalues (these two should be equal):
+trace(C1), sum(d(1:L))
+
+% ---------------------------------- Plots ----------------------------------
+
+col = {'rgbkcmy','o+x.+sdv^<>ph'};	% colors and markers for points
+
+% Plot eigenvalues and explained variance
+figure(1); clf;
+subplot(2,1,1); plot(d,'bo-'); axis([0 D+1 0 1.05*max(d)]);
+xlabel('PC'); ylabel('\lambda'); title('eigenvalues');
+subplot(2,1,2); plot(cumsum(d)/sum(d),'ro-'); axis([0 D+1 0 1.05]);
+xlabel('PC'); ylabel('var'); title('explained variance');
+set(gcf,'Name','eigenvalues of the covariance matrix and explained variance');
+
+% Plot mean as an image
+figure(2); clf; colormap(gray(256)); imagesc(reshape(m,DD,DD),[0 1]);
+set(gca,'XTick',[],'YTick',[]); axis image;
+set(gcf,'Name','mean of the data');
+
+% Plot projections in 2D
+c1 = 1; c2 = 2;				% PCs to project on
+figure(3); clf; hold on;
+for k=1:K
+  [k1,k2] = ind2sub([length(col{1}) length(col{2})],k);
+  J = find(Y==C(k)); plot(Z(c1,J),Z(c2,J),[col{1}(k1) col{2}(k2)]);
+end
+hold off; daspect([1 1 1]); box on;
+xlabel(['PC' num2str(c1)]); ylabel(['PC' num2str(c2)]); legend(num2str(C'));
+AX = axis; P = get(gca,'Position');
+set(gcf,'Name','projection of the dataset on first 2 PCs');
+
+% Plot projections in 2D as digit images
+% Note: somehow the Y coordinates are slightly enlarged wrt the previous plot!?
+c1 = 1; c2 = 2;				% PCs to project on
+w = 0.05;				% width of image relative to [0,1]
+ax = P(3)/(AX(2)-AX(1)); bx = P(1) - ax*AX(1);	% map coordinate -> figure
+ay = P(4)/(AX(4)-AX(3)); by = P(2) - ay*AX(3);
+figure(30); clf; axis(AX); daspect([1 1 1]); box on;
+xlabel(['PC' num2str(c1)]); ylabel(['PC' num2str(c2)]);
+hold on;
+for i=randperm(length(Y),min(length(Y),500))
+  axes('position',[ax*Z(c1,i)+bx-w/2 ay*Z(c2,i)+by-w/2 w w]);
+  Xi = reshape(X(:,i),DD,DD); colormap(gray(256));
+  h = imagesc(1-Xi,[0 1]); alpha(h,Xi); axis off; daspect([1 1 1]);
+end
+hold off;
+set(gcf,'Name','projection of a data subset on first 2 PCs (as images)');
+
+% Plot projections in 3D
+c1 = 1; c2 = 2; c3 = 3;			% PCs to project on
+figure(4); clf; hold on;
+for k=1:K
+  [k1,k2] = ind2sub([length(col{1}) length(col{2})],k);
+  J = find(Y==C(k)); plot3(Z(c1,J),Z(c2,J),Z(c3,J),[col{1}(k1) col{2}(k2)]);
+end
+hold off; daspect([1 1 1]); box on;
+xlabel(['PC' num2str(c1)]); ylabel(['PC' num2str(c2)]);
+zlabel(['PC' num2str(c3)]); legend(num2str(C'));
+set(gcf,'Name','projection of a data subset on first 3 PCs');
+% Fly around to obtain different views
+fr = 40;
+el = linspace(-90,90,fr); el = [el el([end-1:-1:2])];
+az = 30+linspace(0,360,length(el)+1); az = az([1:end-1]);
+for k=1:length(az)
+  view(az(k),el(k)); title(['az=' num2str(az(k),3) '; el=' num2str(el(k),3)]);
+  pause(0.2);
+end
+
+% Plot top L eigenvectors as images ("eigendigits")
+L = 10; UU = U(:,1:L); c1 = min(UU(:)); c2 = max(UU(:));
+figure(5); clf; colormap(parula(256));
+K2 = ceil(sqrt(L+1)); K1 = ceil((L+1)/K2);
+for i=1:L
+  subplot(K1,K2,i); imagesc(reshape(U(:,i),DD,DD),[c1 c2]);
+  set(gca,'XTick',[],'YTick',[]); axis image; title(['PC = ' num2str(i)]);
+end
+subplot(K1,K2,L+1); imagesc(linspace(c2,c1,256)',[c1 c2]); daspect([1 50 1]);
+set(gca,'XTick',[],'YTick',[1 128 256],'YTickLabel',num2str([c2;0;c1],2));
+title('colorbar');
+%colorbar;
+set(gcf,'Name','top eigenvectors as images ("eigendigits")');
+
+% Reconstruct a few images using up to L components
+% XX = bsxfun(@plus,W(:,1:L)*Z(1:L,:),m);
+L = [1 2 3 5 10 30 50];
+figure(6);
+set(gcf,'Name','reconstruction of an image from the PCA projections');
+%J = 1:10;				% first 10 images
+J = [1 2 6 9 10 13 22 32 50 62 73];	% handpicked
+for i=J
+  set(0,'CurrentFigure',6); clf; colormap(gray(256));
+  for j=1:length(L)
+    xx = W(:,1:L(j))*Z(1:L(j),i) + m;
+    subplot(1,length(L)+1,j); imagesc(reshape(xx,DD,DD),[0 1]);
+    set(gca,'XTick',[],'YTick',[]); axis image; title(['L = ' num2str(L(j))]);
+  end
+  subplot(1,length(L)+1,length(L)+1); imagesc(reshape(X(:,i),DD,DD),[0 1]);
+  set(gca,'XTick',[],'YTick',[]); axis image;
+  title(['original image ' num2str(i)]);
+  pause
+end
+
+% Plot variation from the mean along the Lth PC
+L = 1;
+XX = bsxfun(@plus,W(:,L)*linspace(-1,1,100)*max(abs(Z(L,:))),m);
+figure(7); colormap(gray(256));
+set(gcf,'Name','variation from the mean along the Lth PC');
+subplot(1,2,1); imagesc(reshape(m,DD,DD),[0 1]);
+set(gca,'XTick',[],'YTick',[]); axis image; title('mean');
+for i=1:size(XX,2)
+  subplot(1,2,2); cla; imagesc(reshape(XX(:,i),DD,DD),[0 1]);
+  set(gca,'XTick',[],'YTick',[]); axis image;
+  title(['\pm along PC' num2str(L)]);
+  pause
+end
+
+
+% ------------------------------------------------------------------------
+% Suggestions of things to try:
+% - For MNIST:
+%   . Try using only 1s, 2s, 3s; or other digit combinations.
+%     How do the PCA projections in 2D or 3D look like?
+%   . Change the training set size.
+%     How do the eigenvalues change?
+% - For MNIST-rotated-7: understand the structure of this data and explain
+%   why the PCA or LDA projections look the way they do.
+% - Try other datasets:
+%   . The UCI repository has various datasets.
+%   . Try a dataset of face images and plot the "eigenfaces".
+
+
+
+% To work with the MNISTrotated7 dataset, for plotting purposes it is
+% convenient to define as "class" each set of 60 rotations for a given
+% 7-image. This will help your understanding of the structure of this
+% high-dimensional data. To define those classes, replace the section
+% "Load data" in this file with the code below. Then, run the rest of the
+% code starting from section "PCA" to get the results.
+
+% ------------------------------- Load data -------------------------------
+load MNISTrotated7.mat; [N,D] = size(train_img);
+K = 5;						% number of 7-images to use
+I = 1:60*K;					% rotations for first K images
+X = train_img(I,:)'; X = double(X)/255;		% actual rotated images
+C = 1:K; Y = train_gnd(I)';			% "class labels" to use
+DD = sqrt(D);					% images of DDxDD
+% Instances X is of DxN, labels Y is of 1xN, K = number of classes
+

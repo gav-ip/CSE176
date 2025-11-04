@@ -1,0 +1,107 @@
+https://pytorch.org/tutorials/beginner/pytorch_with_examples.html
+https://pytorch.org/tutorials/beginner/blitz/neural_networks_tutorial.html
+----------------------------------------------------------------------------------------
+from torchvision import datasets
+import numpy as np
+from torch.utils.data import TensorDataset, DataLoader
+
+def data_loader(batch_size=2048, n_workers=4):
+    train_data_th = datasets.MNIST(root='./datasets', download=True, train=True)
+    test_data_th = datasets.MNIST(root='./datasets', download=True, train=False)
+
+    data_train = np.array(train_data_th.data[:]).astype(np.float32)
+    data_test = np.array(test_data_th.data[:]).astype(np.float32)
+    data_train = (data_train / 255)
+    dtrain_mean = data_train.mean(axis=0)
+    data_train -= dtrain_mean
+    data_test = (data_test / 255).astype(np.float32)
+    data_test -= dtrain_mean
+
+    train_data = TensorDataset(torch.from_numpy(data_train), train_data_th.targets)
+    test_data = TensorDataset(torch.from_numpy(data_test), test_data_th.targets)
+
+    train_loader = DataLoader(train_data, num_workers=n_workers, batch_size=batch_size, shuffle=True,)
+    test_loader = DataLoader(test_data, num_workers=n_workers, batch_size=batch_size, shuffle=False)
+
+    return train_loader, test_loader
+
+
+----------------------------------------
+def calc_acc(loader, net):
+  correct_cnt = 0
+  total_cnt = 0
+  for batch_inputs, batch_labels in loader:
+    batch_inputs = batch_inputs.cuda()
+    batch_labels = batch_labels.cuda()
+    total_cnt += len(batch_inputs)
+    out = net(batch_inputs[:,None,:,:])
+    _, pred_labels = torch.max(out.data, 1)
+    correct_cnt += (pred_labels==batch_labels).sum().item()
+  
+  return correct_cnt/total_cnt
+
+
+----------------------------------------
+net = Net()
+net.cuda()
+--------------------------------------
+nnloss = torch.nn.CrossEntropyLoss()
+from torch import nn, optim
+
+def train_net(net):
+    train_loader, test_loader = data_loader()
+    params = list(filter(lambda p: p.requires_grad, net.parameters()))
+    optimizer = optim.SGD(params, lr=0.1, momentum=0.9, nesterov=True)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.9)
+    epochs=10
+    for epoch in range(epochs):
+        avg_loss = []
+        for x, target in train_loader:
+            optimizer.zero_grad()
+            x = x.cuda()[:,None,:,:]
+            target = target.cuda().to(dtype=torch.long)
+            out = net(x)
+            loss = nnloss(out, target)
+            avg_loss.append(loss.item())
+            loss.backward()
+            optimizer.step()
+        scheduler.step()
+
+        print(f"\tepoch #{epoch} is finished.")
+        print(f"\t  avg. train loss: {np.mean(avg_loss):.6f}")
+-----------------------------------------
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class Net(nn.Module):
+
+    def __init__(self):
+        super(Net, self).__init__()
+        # 1 input image channel, 6 output channels, 5x5 square convolution
+        # kernel
+        self.conv1 = nn.Conv2d(1, 6, 5)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        # an affine operation: y = Wx + b
+        self.fc1 = nn.Linear(256, 120)  # 5*5 from image dimension 
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, 10)
+
+    def forward(self, x):
+        # Max pooling over a (2, 2) window
+        x = F.max_pool2d(F.relu(self.conv1(x)), (2, 2))
+        # If the size is a square, you can specify with a single number
+        x = F.max_pool2d(F.relu(self.conv2(x)), 2)
+        x = torch.flatten(x, 1) # flatten all dimensions except the batch dimension
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+
+
+net = Net()
+print(net)
+
+---------------------------------------------------
